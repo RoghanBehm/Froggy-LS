@@ -1,0 +1,16 @@
+[package]
+name = "tree-sitter-froggy"
+version = "0.1.0"
+edition = "2024"
+build = "bindings/rust/build.rs"
+
+[lib]
+path = "bindings/rust/lib.rs"
+
+[dependencies]
+tree-sitter = "0.26.3"
+tree-sitter-language = "0.1"
+
+[build-dependencies]
+cc = "1"
+tree-sitter = "0.26.3"
