@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 tree-sitter = "0.26.3"
 tree-sitter-froggy = { path = "../parser" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
+tower-lsp = "0.20.0"

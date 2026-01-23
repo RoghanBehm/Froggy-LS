@@ -1,26 +1,15 @@
-use std::{env, fs, process};
-use tree_sitter::Parser;
+mod backend;
+mod diagnostics;
+mod document;
 
-fn main() {
-    let path = env::args().nth(1).unwrap_or_else(|| {
-        eprintln!("Usage: lsp-froggy <file.frog>");
-        process::exit(2);
-    });
+use backend::Backend;
+use tower_lsp::{LspService, Server};
 
-    let source = fs::read_to_string(&path).unwrap_or_else(|e| {
-        eprintln!("Failed to read {}: {}", path, e);
-        process::exit(2);
-    });
+#[tokio::main]
+async fn main() {
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
 
-    let mut parser = Parser::new();
-
-    parser
-        .set_language(&tree_sitter_froggy::LANGUAGE.into())
-        .expect("Error loading Froggy parser");
-
-    let tree = parser.parse(&source, None).expect("tree-sitter returned None");
-    let root = tree.root_node();
-
-    println!("has_error: {}", root.has_error());
-    println!("{}", root.to_sexp());
+    let (service, socket) = LspService::new(Backend::new);
+    Server::new(stdin, stdout, socket).serve(service).await;
 }
