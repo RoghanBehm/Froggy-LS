@@ -762,6 +762,8 @@ dependencies = [
 [[package]]
 name = "tree-sitter-froggy"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93018fa3af58edbc0c4a07ef9fd7fc51255e8953497ed5bf63d501c28fa8ab0e"
 dependencies = [
  "cc",
  "tree-sitter",
