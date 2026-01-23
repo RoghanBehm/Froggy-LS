@@ -5,7 +5,10 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
 use crate::diagnostics::collect_diagnostics;
-use crate::document::{make_parser, Doc};
+use crate::document::{Doc, make_parser};
+use crate::utils::tree_sitter_helpers::{find_node_at_position, node_to_range};
+use crate::utils::froggy_helpers::find_label_definition;
+
 
 #[derive(Debug)]
 pub struct Backend {
@@ -32,6 +35,7 @@ impl LanguageServer for Backend {
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions::default()),
+                definition_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -40,7 +44,7 @@ impl LanguageServer for Backend {
 
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "server initialized!")
+            .log_message(MessageType::INFO, "server initialised!")
             .await;
     }
 
@@ -48,18 +52,18 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         let text = params.text_document.text;
         let version = params.text_document.version;
-        
+
         let mut parser = make_parser();
         let tree = parser.parse(&text, None).expect("parse() returned None");
         let diags = collect_diagnostics(&tree, &text);
-        
+
         self.client
             .log_message(
                 MessageType::INFO,
                 format!("didOpen: Found {} diagnostics", diags.len()),
             )
             .await;
-        
+
         self.client
             .publish_diagnostics(uri.clone(), diags, None)
             .await;
@@ -95,7 +99,10 @@ impl LanguageServer for Backend {
             }
 
             let diags = collect_diagnostics(&doc.tree, &doc.text);
-            let log_msg = format!("didChange: {uri} v{version} changes={change_count}, diagnostics={}", diags.len());
+            let log_msg = format!(
+                "didChange: {uri} v{version} changes={change_count}, diagnostics={}",
+                diags.len()
+            );
 
             (diags, log_msg)
         };
@@ -117,10 +124,41 @@ impl LanguageServer for Backend {
 
     async fn hover(&self, _: HoverParams) -> Result<Option<Hover>> {
         Ok(Some(Hover {
-            contents: HoverContents::Scalar(MarkedString::String(
-                "You're hovering!".to_string(),
-            )),
+            contents: HoverContents::Scalar(MarkedString::String("You're hovering!".to_string())),
             range: None,
         }))
+    }
+
+        async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+        
+        let docs = self.docs.read().await;
+        let doc = match docs.get(uri) {
+            Some(d) => d,
+            None => return Ok(None),
+        };
+        
+        let node = find_node_at_position(&doc.tree, position);
+        
+        if node.kind() == "identifier" {
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "hop" || parent.kind() == "leap" {
+                    let label_name = node.utf8_text(doc.text.as_bytes()).unwrap_or("__unknown__");
+                    
+                    if let Some(def_node) = find_label_definition(&doc.tree, label_name, &doc.text) {
+                        return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                            uri: uri.clone(),
+                            range: node_to_range(def_node),
+                        })));
+                    }
+                }
+            }
+        }
+        
+        Ok(None)
     }
 }
