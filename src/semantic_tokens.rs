@@ -2,6 +2,7 @@ use tower_lsp::lsp_types::SemanticTokens;
 use tower_lsp::lsp_types::*;
 
 use crate::document::{ByteRange, Doc};
+use crate::utils::froggy_helpers::leading_word_range;
 use crate::utils::tree_sitter_helpers::dfs_visit;
 
 pub struct Tok {
@@ -50,19 +51,16 @@ pub fn build_semantic_tokens(doc: &Doc) -> Vec<Tok> {
 
     dfs_visit(&doc.tree, |node| {
         let kind = node.kind();
-        eprintln!("=== Building semantic tokens ===");
-        eprintln!("Tree root: {}", doc.tree.root_node().kind());
 
-        // Map tree-sitter node kinds to semantic token types
-        let (token_type, modifiers) = match kind {
-            "plop" | "hop" | "leap" | "ribbit" | "croak" => (Some(token_types::KEYWORD), 0),
+        if matches!(kind, "plop" | "hop" | "leap" | "ribbit" | "croak") {
+            let r = leading_word_range(&doc.text, node);
+            if let Some(t) = tok_from_range(doc, &r, token_types::KEYWORD, 0) {
+                toks.push(t);
+            }
+            return;
+        }
 
-            "number" | "integer" | "float" => (Some(token_types::NUMBER), 0),
-
-            "comment" | "line_comment" | "block_comment" => (Some(token_types::COMMENT), 0),
-
-            "string" | "string_literal" => (Some(token_types::STRING), 0),
-
+        match kind {
             "label_definition" => {
                 if let Some(name_node) = node.child_by_field_name("name").or_else(|| node.child(1))
                 {
@@ -102,20 +100,50 @@ pub fn build_semantic_tokens(doc: &Doc) -> Vec<Tok> {
                         return;
                     }
                 }
-                (Some(token_types::VARIABLE), 0)
+                let range = ByteRange {
+                    start: node.start_byte(),
+                    end: node.end_byte(),
+                };
+                if let Some(t) = tok_from_range(doc, &range, token_types::VARIABLE, 0) {
+                    toks.push(t);
+                }
+                return;
             }
 
-            _ => (None, 0),
-        };
-
-        if let Some(ty) = token_type {
-            let range = ByteRange {
-                start: node.start_byte(),
-                end: node.end_byte(),
-            };
-            if let Some(t) = tok_from_range(doc, &range, ty, modifiers) {
-                toks.push(t);
+            "number" | "integer" | "float" => {
+                let range = ByteRange {
+                    start: node.start_byte(),
+                    end: node.end_byte(),
+                };
+                if let Some(t) = tok_from_range(doc, &range, token_types::NUMBER, 0) {
+                    toks.push(t);
+                }
+                return;
             }
+
+            "string" | "string_literal" => {
+                let range = ByteRange {
+                    start: node.start_byte(),
+                    end: node.end_byte(),
+                };
+                if let Some(t) = tok_from_range(doc, &range, token_types::STRING, 0) {
+                    toks.push(t);
+                }
+                return;
+            }
+
+            "comment" | "line_comment" | "block_comment" => {
+                let range = ByteRange {
+                    start: node.start_byte(),
+                    end: node.end_byte(),
+                };
+                if let Some(t) = tok_from_range(doc, &range, token_types::COMMENT, 0) {
+                    toks.push(t);
+                }
+                return;
+            }
+
+            _ => {}
         }
     });
 

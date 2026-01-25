@@ -7,7 +7,7 @@ use tower_lsp::{Client, LanguageServer};
 use crate::diagnostics::collect_diagnostics;
 use crate::document::{Doc, make_parser};
 use crate::semantic_tokens::{build_semantic_tokens, encode_semantic_tokens, legend};
-use crate::utils::froggy_helpers::{find_label_definition, make_hover};
+use crate::utils::froggy_helpers::{find_label_definition, leading_word_range, make_hover};
 use crate::utils::tree_sitter_helpers::{find_node_at_position, labeldef_to_range};
 
 #[derive(Debug)]
@@ -148,31 +148,28 @@ impl LanguageServer for Backend {
         let mut cur = node;
 
         loop {
+            let r = leading_word_range(&doc.text, cur);
             match cur.kind() {
                 "plop" => {
                     return Ok(Some(make_hover(
                         "PLOP <value>: Push a value onto the stack",
-                        cur,
+                        r,
                         doc,
                     )));
                 }
                 "hop" => {
-                    return Ok(Some(make_hover("HOP <label>: Conditional jump", cur, doc)));
+                    return Ok(Some(make_hover("HOP <label>: Conditional jump", r, doc)));
                 }
                 "leap" => {
-                    return Ok(Some(make_hover(
-                        "LEAP <label>: Unconditional jump",
-                        cur,
-                        doc,
-                    )));
+                    return Ok(Some(make_hover("LEAP <label>: Unconditional jump", r, doc)));
                 }
-                "ribbit" => return Ok(Some(make_hover("RIBBIT: Print top of stack", cur, doc))),
-                "croak" => return Ok(Some(make_hover("CROAK: Read input and push", cur, doc))),
+                "ribbit" => return Ok(Some(make_hover("RIBBIT: Print top of stack", r, doc))),
+                "croak" => return Ok(Some(make_hover("CROAK: Read input and push", r, doc))),
 
                 "identifier" => {
                     let text = cur.utf8_text(bytes).unwrap_or("");
                     if let Some(_def) = find_label_definition(&doc.index, text) {
-                        return Ok(Some(make_hover(&format!("Label: {}", text), cur, doc)));
+                        return Ok(Some(make_hover(&format!("Label: {}", text), r, doc)));
                     } else {
                         return Ok(None);
                     }
