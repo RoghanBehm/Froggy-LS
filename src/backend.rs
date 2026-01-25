@@ -6,7 +6,7 @@ use tower_lsp::{Client, LanguageServer};
 
 use crate::diagnostics::collect_diagnostics;
 use crate::document::{Doc, make_parser};
-use crate::utils::froggy_helpers::find_label_definition;
+use crate::utils::froggy_helpers::{make_hover, find_label_definition};
 use crate::utils::tree_sitter_helpers::{find_node_at_position, labeldef_to_range};
 
 #[derive(Debug)]
@@ -118,12 +118,51 @@ impl LanguageServer for Backend {
         ])))
     }
 
-    async fn hover(&self, _: HoverParams) -> Result<Option<Hover>> {
-        Ok(Some(Hover {
-            contents: HoverContents::Scalar(MarkedString::String("You're hovering!".to_string())),
-            range: None,
-        }))
+async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+    let uri = &params.text_document_position_params.text_document.uri;
+    let position = params.text_document_position_params.position;
+    
+    let docs = self.docs.read().await;
+    let doc = match docs.get(uri) {
+        Some(d) => d,
+        None => return Ok(None),
+    };
+    
+    let node = find_node_at_position(&doc.tree, doc, position);
+    let bytes = doc.text.as_bytes();
+    
+let mut cur = node;
+
+loop {
+    match cur.kind() {
+        "plop" => return Ok(Some(make_hover("PLOP <value>: Push a value onto the stack", cur, doc))),
+        "hop"  => return Ok(Some(make_hover("HOP <label>: Conditional jump ...", cur, doc))),
+        "leap" => return Ok(Some(make_hover("LEAP <label>: Unconditional jump ...", cur, doc))),
+        "ribbit" => return Ok(Some(make_hover("RIBBIT: Print top of stack", cur, doc))),
+        "croak" => return Ok(Some(make_hover("CROAK: Read input and push", cur, doc))),
+
+        "identifier" => {
+            let text = cur.utf8_text(bytes).unwrap_or("");
+            if let Some(_def) = find_label_definition(&doc.index, text) {
+                return Ok(Some(make_hover(&format!("Label: {}", text), cur, doc)));
+            } else {
+                return Ok(None);
+            }
+        }
+
+        _ => {}
     }
+
+    match cur.parent() {
+        Some(p) => cur = p,
+        None => break,
+    }
+}
+
+Ok(None)
+
+}
+
 
     async fn goto_definition(
         &self,
