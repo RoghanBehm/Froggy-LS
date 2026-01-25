@@ -1,0 +1,4 @@
+- Semantic diagnostics (undefined labels, duplicates)
+- Hover (describe what each keyword does)
+- Semantic highlihgting
+- Find references

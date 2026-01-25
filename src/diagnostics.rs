@@ -1,24 +1,23 @@
 use tower_lsp::lsp_types::*;
 use tree_sitter::{Node, Tree};
 
-fn node_range(node: Node) -> Range {
-    let r = node.range();
+use crate::document::Doc;
+
+fn node_range(node: Node, doc: &Doc) -> Range {
     Range {
-        start: Position {
-            line: r.start_point.row as u32,
-            character: r.start_point.column as u32,
-        },
-        end: Position {
-            line: r.end_point.row as u32,
-            character: r.end_point.column as u32,
-        },
+        start: doc
+            .offset_to_lsp_position(node.start_byte())
+            .unwrap_or_default(),
+        end: doc
+            .offset_to_lsp_position(node.end_byte())
+            .unwrap_or_default(),
     }
 }
 
-fn syntax_error_diag(node: Node, text: &str) -> Diagnostic {
-    let snippet = node.utf8_text(text.as_bytes()).unwrap_or("__unknown__");
+fn syntax_error_diag(node: Node, doc: &Doc) -> Diagnostic {
+    let snippet = node.utf8_text(doc.text.as_bytes()).unwrap_or("__unknown__");
     Diagnostic {
-        range: node_range(node),
+        range: node_range(node, doc),
         severity: Some(DiagnosticSeverity::ERROR),
         source: Some("froggy".to_string()),
         message: format!("Syntax error near `{snippet}`"),
@@ -26,31 +25,34 @@ fn syntax_error_diag(node: Node, text: &str) -> Diagnostic {
     }
 }
 
-pub fn collect_diagnostics(tree: &Tree, text: &str) -> Vec<Diagnostic> {
+pub fn collect_diagnostics(tree: &Tree, doc: &Doc) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let mut stack = vec![tree.root_node()];
 
+    eprintln!("=== DEBUG: Starting diagnostic collection ===");
+    eprintln!("Tree root kind: {}", tree.root_node().kind());
+    eprintln!("Tree has_error: {}", tree.root_node().has_error());
+
     while let Some(node) = stack.pop() {
+        // DEBUG: Print every node kind
+        eprintln!(
+            "Node: kind={}, is_error={}, is_missing={}, has_error={}",
+            node.kind(),
+            node.is_error(),
+            node.is_missing(),
+            node.has_error()
+        );
+
         let is_err = node.is_error() || node.is_missing() || node.kind() == "ERROR";
         if is_err {
-            let diag = syntax_error_diag(node, text);
-
-            let r = node.range();
-            eprintln!(
-                "[DIAG] {}:{}-{}:{} - {}",
-                r.start_point.row,
-                r.start_point.column,
-                r.end_point.row,
-                r.end_point.column,
-                diag.message
-            );
-
-            out.push(diag);
+            eprintln!(">>> FOUND ERROR NODE: {}", node.kind());
+            out.push(syntax_error_diag(node, doc));
         }
 
         let mut cursor = node.walk();
         stack.extend(node.children(&mut cursor));
     }
 
+    eprintln!("=== Total diagnostics found: {} ===", out.len());
     out
 }

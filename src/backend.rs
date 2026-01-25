@@ -6,9 +6,8 @@ use tower_lsp::{Client, LanguageServer};
 
 use crate::diagnostics::collect_diagnostics;
 use crate::document::{Doc, make_parser};
-use crate::utils::tree_sitter_helpers::{find_node_at_position, node_to_range};
 use crate::utils::froggy_helpers::find_label_definition;
-
+use crate::utils::tree_sitter_helpers::{find_node_at_position, labeldef_to_range};
 
 #[derive(Debug)]
 pub struct Backend {
@@ -55,7 +54,10 @@ impl LanguageServer for Backend {
 
         let mut parser = make_parser();
         let tree = parser.parse(&text, None).expect("parse() returned None");
-        let diags = collect_diagnostics(&tree, &text);
+
+        let doc = Doc::new(text, version, tree);
+
+        let diags = collect_diagnostics(&doc.tree, &doc);
 
         self.client
             .log_message(
@@ -71,14 +73,11 @@ impl LanguageServer for Backend {
         self.client
             .log_message(
                 MessageType::INFO,
-                format!("didOpen: {uri} v{version} len={}", text.len()),
+                format!("didOpen: {uri} v{version} len={}", doc.text.len()),
             )
             .await;
 
-        self.docs
-            .write()
-            .await
-            .insert(uri, Doc::new(text, version, tree));
+        self.docs.write().await.insert(uri, doc);
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -86,26 +85,23 @@ impl LanguageServer for Backend {
         let version = params.text_document.version;
         let change_count = params.content_changes.len();
 
-        let (diags, log_msg) = {
-            let mut docs = self.docs.write().await;
-            let doc = match docs.get_mut(&uri) {
-                Some(d) => d,
-                None => return,
-            };
-
-            for change in params.content_changes {
-                let mut parser = make_parser();
-                doc.update(change.text, version, &mut parser);
-            }
-
-            let diags = collect_diagnostics(&doc.tree, &doc.text);
-            let log_msg = format!(
-                "didChange: {uri} v{version} changes={change_count}, diagnostics={}",
-                diags.len()
-            );
-
-            (diags, log_msg)
+        let mut docs = self.docs.write().await;
+        let doc = match docs.get_mut(&uri) {
+            Some(d) => d,
+            None => return,
         };
+
+        for change in params.content_changes {
+            let mut parser = make_parser();
+            doc.update(change.text, version, &mut parser);
+        }
+
+        let diags = collect_diagnostics(&doc.tree, doc);
+
+        let log_msg = format!(
+            "didChange: {uri} v{version} changes={change_count}, diagnostics={}",
+            diags.len()
+        );
 
         self.client.log_message(MessageType::INFO, log_msg).await;
         self.client.publish_diagnostics(uri, diags, None).await;
@@ -129,36 +125,36 @@ impl LanguageServer for Backend {
         }))
     }
 
-        async fn goto_definition(
+    async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = &params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        
+
         let docs = self.docs.read().await;
         let doc = match docs.get(uri) {
             Some(d) => d,
             None => return Ok(None),
         };
-        
-        let node = find_node_at_position(&doc.tree, position);
-        
+
+        let node = find_node_at_position(&doc.tree, doc, position);
+
         if node.kind() == "identifier" {
             if let Some(parent) = node.parent() {
                 if parent.kind() == "hop" || parent.kind() == "leap" {
                     let label_name = node.utf8_text(doc.text.as_bytes()).unwrap_or("__unknown__");
-                    
-                    if let Some(def_node) = find_label_definition(&doc.tree, label_name, &doc.text) {
+
+                    if let Some(def_node) = find_label_definition(&doc.index, label_name) {
                         return Ok(Some(GotoDefinitionResponse::Scalar(Location {
                             uri: uri.clone(),
-                            range: node_to_range(def_node),
+                            range: labeldef_to_range(def_node, doc),
                         })));
                     }
                 }
             }
         }
-        
+
         Ok(None)
     }
 }
