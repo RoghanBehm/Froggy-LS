@@ -1,6 +1,7 @@
 mod backend;
 mod diagnostics;
 mod document;
+mod semantic_tokens;
 mod utils;
 
 use backend::Backend;

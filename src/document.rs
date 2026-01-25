@@ -123,3 +123,13 @@ pub struct ByteRange {
     pub start: usize,
     pub end: usize,
 }
+
+impl ByteRange {
+    pub fn len_bytes(&self) -> usize {
+        self.end - self.start
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.start >= self.end
+    }
+}

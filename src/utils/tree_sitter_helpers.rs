@@ -4,8 +4,6 @@ use tree_sitter::{Node, Tree};
 
 use crate::document::{ByteRange, Doc};
 
-
-
 pub fn find_node_at_position<'tree>(
     tree: &'tree Tree,
     doc: &Doc,
@@ -36,7 +34,6 @@ pub fn find_node_at_position<'tree>(
         .descendant_for_point_range(point, point)
         .unwrap_or_else(|| tree.root_node())
 }
-
 
 pub fn labeldef_to_range(def: &ByteRange, doc: &Doc) -> Range {
     let start_offset = def.start;
