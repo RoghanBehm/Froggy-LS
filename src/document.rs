@@ -31,7 +31,7 @@ impl Doc {
         self.text = text;
         self.version = version;
         self.tree = parser
-            .parse(&self.text, Some(&self.tree))
+            .parse(&self.text, None)
             .expect("parse() returned None");
         self.index = Index::build(&self.tree, &self.text);
         self.line_index = LineIndex::new(&self.text);
