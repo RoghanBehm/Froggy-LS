@@ -52,7 +52,30 @@ pub fn build_semantic_tokens(doc: &Doc) -> Vec<Tok> {
     dfs_visit(&doc.tree, |node| {
         let kind = node.kind();
 
-        if matches!(kind, "plop" | "hop" | "leap" | "ribbit" | "croak") {
+        if matches!(
+            kind,
+            "plop"
+                | "hop"
+                | "leap"
+                | "gulp"
+                | "ribbit"
+                | "croak"
+                | "dup"
+                | "swap"
+                | "over"
+                | "less_than"
+                | "greater_than"
+                | "equals"
+                | "not_equal"
+                | "less_eq"
+                | "greater_eq"
+                | "add"
+                | "sub"
+                | "mul"
+                | "div"
+                | "lily"
+                | "splash"
+        ) {
             let r = leading_word_range(&doc.text, node);
             if let Some(t) = tok_from_range(doc, &r, token_types::KEYWORD, 0) {
                 toks.push(t);
@@ -62,18 +85,38 @@ pub fn build_semantic_tokens(doc: &Doc) -> Vec<Tok> {
 
         match kind {
             "label_definition" => {
+                if let Some(name_node) = node.child_by_field_name("name").or_else(|| node.child(0))
+                {
+                    let range = ByteRange {
+                        start: name_node.start_byte(),
+                        end: name_node.end_byte(),
+                    };
+                    if let Some(t) = tok_from_range(doc, &range, token_types::KEYWORD, 0) {
+                        toks.push(t);
+                    }
+                }
+
                 if let Some(name_node) = node.child_by_field_name("name").or_else(|| node.child(1))
                 {
                     let range = ByteRange {
                         start: name_node.start_byte(),
                         end: name_node.end_byte(),
                     };
-                    if let Some(t) = tok_from_range(
-                        doc,
-                        &range,
-                        token_types::VARIABLE,
-                        token_modifiers::DECLARATION | token_modifiers::DEFINITION,
-                    ) {
+                    if let Some(t) = tok_from_range(doc, &range, token_types::VARIABLE, 0) {
+                        toks.push(t);
+                    }
+                }
+                return;
+            }
+
+            "stack_manipulation" => {
+                if let Some(name_node) = node.child_by_field_name("name").or_else(|| node.child(0))
+                {
+                    let range = ByteRange {
+                        start: name_node.start_byte(),
+                        end: name_node.end_byte(),
+                    };
+                    if let Some(t) = tok_from_range(doc, &range, token_types::KEYWORD, 0) {
                         toks.push(t);
                     }
                 }

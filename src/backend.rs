@@ -98,10 +98,12 @@ impl LanguageServer for Backend {
         let version = params.text_document.version;
         let change_count = params.content_changes.len();
 
-        let mut docs = self.docs.write().await;
-        let doc = match docs.get_mut(&uri) {
-            Some(d) => d,
-            None => return,
+        let mut doc = {
+            let mut docs = self.docs.write().await;
+            match docs.remove(&uri) {
+                Some(d) => d,
+                None => return,
+            }
         };
 
         for change in params.content_changes {
@@ -109,7 +111,7 @@ impl LanguageServer for Backend {
             doc.update(change.text, version, &mut parser);
         }
 
-        let diags = collect_diagnostics(&doc.tree, doc);
+        let diags = collect_diagnostics(&doc.tree, &doc);
 
         let log_msg = format!(
             "didChange: {uri} v{version} changes={change_count}, diagnostics={}",
@@ -117,6 +119,11 @@ impl LanguageServer for Backend {
         );
 
         self.client.log_message(MessageType::INFO, log_msg).await;
+
+        {
+            let mut docs = self.docs.write().await;
+            docs.insert(uri.clone(), doc);
+        }
         self.client.publish_diagnostics(uri, diags, None).await;
         let _ = self.client.semantic_tokens_refresh().await;
     }
@@ -150,22 +157,39 @@ impl LanguageServer for Backend {
         loop {
             let r = leading_word_range(&doc.text, cur);
             match cur.kind() {
-                "plop" => {
-                    return Ok(Some(make_hover(
-                        "PLOP <value>: Push a value onto the stack",
-                        r,
-                        doc,
-                    )));
-                }
-                "hop" => {
-                    return Ok(Some(make_hover("HOP <label>: Conditional jump", r, doc)));
-                }
-                "leap" => {
-                    return Ok(Some(make_hover("LEAP <label>: Unconditional jump", r, doc)));
-                }
-                "ribbit" => return Ok(Some(make_hover("RIBBIT: Print top of stack", r, doc))),
-                "croak" => return Ok(Some(make_hover("CROAK: Read input and push", r, doc))),
 
+                // Stack
+                "plop" => return Ok(Some(make_hover("PLOP <value>: Push a value onto the stack", r, doc,))),
+                "splash" => return Ok(Some(make_hover("SPLASH <Lilypad>: Pop a value off the stack", r, doc))),
+                "gulp" => return Ok(Some(make_hover("GULP: Increment top of stack", r, doc))),
+                "burp" => return Ok(Some(make_hover("BURP: Decrement top of stack", r, doc))),
+                "dup" => return Ok(Some(make_hover("DUP: Duplicate top of stack", r, doc))),
+                "swap" => return Ok(Some(make_hover("SWAP: Swap the top of the stack with its predecessor", r, doc))),
+                "over" => return Ok(Some(make_hover("OVER: Duplicate second from top of stack", r, doc))),
+
+                 // Control flow   
+                "lily" => return Ok(Some(make_hover("LILY <label>: lilypad", r, doc))),
+                "hop" => return Ok(Some(make_hover("HOP <Lilypad>: Unconditional jump to a lilypad", r, doc))),
+                "leap" => return Ok(Some(make_hover("LEAP <Lilypad>: Pop a, if (a == 0) then jump to lilypad", r, doc))),
+
+                // IO
+                "ribbit" => return Ok(Some(make_hover("RIBBIT: Print top of stack", r, doc))),
+                "croak" => return Ok(Some(make_hover("CROAK: Not implemented", r, doc))),
+
+
+                // Arithmetic
+                "add" => return Ok(Some(make_hover("ADD: Pop a b, push (b + a)", r, doc))),
+                "sub" => return Ok(Some(make_hover("SUB: Pop a b, push (b - a)", r, doc))),
+                "mul" => return Ok(Some(make_hover("MUL: Pop a b, push (b * a)", r, doc))),
+                "div" => return Ok(Some(make_hover("DIV: Pop a b, push (b / a)", r, doc))),
+
+                // Comparison
+                "equals" => return Ok(Some(make_hover("EQUALS: Pop a b, push (b == a)", r, doc))),
+                "not_equal" => return Ok(Some(make_hover("NOT_EQUAL: Pop a b, push (b != a)", r, doc))),
+                "less_than" => return Ok(Some(make_hover("LESS_THAN: Pop a b, push (b < a)", r, doc))),
+                "greater_than" => return Ok(Some(make_hover("GREATER_THAN: Pop a b, push (b > a)", r, doc))),
+                "less_eq" => return Ok(Some(make_hover("LESS_EQ: Pop a b, push (b <= a)", r, doc))),
+                "greater_eq" => return Ok(Some(make_hover("GREATER_EQ: Pop a b, push (b >= a)", r, doc))),
                 "identifier" => {
                     let text = cur.utf8_text(bytes).unwrap_or("");
                     if let Some(_def) = find_label_definition(&doc.index, text) {
@@ -177,7 +201,7 @@ impl LanguageServer for Backend {
 
                 _ => {}
             }
-
+            // Break out of loop if node is parentless
             match cur.parent() {
                 Some(p) => cur = p,
                 None => break,
