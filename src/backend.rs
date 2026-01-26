@@ -5,7 +5,7 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
 use crate::diagnostics::collect_diagnostics;
-use crate::document::{Doc, make_parser};
+use crate::document::{ByteRange, Doc, make_parser};
 use crate::semantic_tokens::{build_semantic_tokens, encode_semantic_tokens, legend};
 use crate::utils::froggy_helpers::{find_label_definition, leading_word_range, make_hover};
 use crate::utils::tree_sitter_helpers::{find_node_at_position, labeldef_to_range};
@@ -139,7 +139,7 @@ impl LanguageServer for Backend {
         ])))
     }
 
-    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = &params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
 
@@ -158,44 +158,66 @@ impl LanguageServer for Backend {
             let r = leading_word_range(&doc.text, cur);
             match cur.kind() {
 
-                // Stack
-                "plop" => return Ok(Some(make_hover("PLOP <value>: Push a value onto the stack", r, doc,))),
-                "splash" => return Ok(Some(make_hover("SPLASH <Lilypad>: Pop a value off the stack", r, doc))),
-                "gulp" => return Ok(Some(make_hover("GULP: Increment top of stack", r, doc))),
-                "burp" => return Ok(Some(make_hover("BURP: Decrement top of stack", r, doc))),
-                "dup" => return Ok(Some(make_hover("DUP: Duplicate top of stack", r, doc))),
-                "swap" => return Ok(Some(make_hover("SWAP: Swap the top of the stack with its predecessor", r, doc))),
-                "over" => return Ok(Some(make_hover("OVER: Duplicate second from top of stack", r, doc))),
+                // Stack operations (both the rule names and string literals)
+                "PLOP" | "plop" => return Ok(Some(make_hover("PLOP <value>: Push a value onto the stack", r, doc))),
+                "SPLASH" | "splash" => return Ok(Some(make_hover("SPLASH: Pop a value off the stack", r, doc))),
+                "GULP" | "gulp" => return Ok(Some(make_hover("GULP: Increment top of stack", r, doc))),
+                "BURP" | "burp" => return Ok(Some(make_hover("BURP: Decrement top of stack", r, doc))),
+                "DUP" | "dup" => return Ok(Some(make_hover("DUP: Duplicate top of stack", r, doc))),
+                "SWAP" | "swap" => return Ok(Some(make_hover("SWAP: Swap top two stack values", r, doc))),
+                "OVER" | "over" => return Ok(Some(make_hover("OVER: Duplicate second from top of stack", r, doc))),
 
-                 // Control flow   
-                "lily" => return Ok(Some(make_hover("LILY <label>: lilypad", r, doc))),
-                "hop" => return Ok(Some(make_hover("HOP <Lilypad>: Unconditional jump to a lilypad", r, doc))),
-                "leap" => return Ok(Some(make_hover("LEAP <Lilypad>: Pop a, if (a == 0) then jump to lilypad", r, doc))),
+                 // Control flow (both rule names and string literals)
+                "LILY" | "lily" => return Ok(Some(make_hover("LILY <label>: Define a lilypad label", r, doc))),
+                "HOP" | "hop" => return Ok(Some(make_hover("HOP <Lilypad>: Unconditional jump to a lilypad", r, doc))),
+                "LEAP" | "leap" => return Ok(Some(make_hover("LEAP <Lilypad>: Pop a, if (a == 0) then jump to lilypad", r, doc))),
 
-                // IO
-                "ribbit" => return Ok(Some(make_hover("RIBBIT: Print top of stack", r, doc))),
-                "croak" => return Ok(Some(make_hover("CROAK: Not implemented", r, doc))),
+                // Label definition
+                "label_definition" => {
+                    // Show info about the label name
+                    if let Some(label_node) = cur.child_by_field_name("name") {
+                        let label_text = label_node.utf8_text(bytes).unwrap_or("");
+                        let label_range = ByteRange {
+                            start: label_node.start_byte(),
+                            end: label_node.end_byte(),
+                        };
+                        return Ok(Some(make_hover(&format!("Label definition: {}", label_text), label_range, doc)));
+                    }
+                }
 
 
-                // Arithmetic
-                "add" => return Ok(Some(make_hover("ADD: Pop a b, push (b + a)", r, doc))),
-                "sub" => return Ok(Some(make_hover("SUB: Pop a b, push (b - a)", r, doc))),
-                "mul" => return Ok(Some(make_hover("MUL: Pop a b, push (b * a)", r, doc))),
-                "div" => return Ok(Some(make_hover("DIV: Pop a b, push (b / a)", r, doc))),
 
-                // Comparison
-                "equals" => return Ok(Some(make_hover("EQUALS: Pop a b, push (b == a)", r, doc))),
-                "not_equal" => return Ok(Some(make_hover("NOT_EQUAL: Pop a b, push (b != a)", r, doc))),
-                "less_than" => return Ok(Some(make_hover("LESS_THAN: Pop a b, push (b < a)", r, doc))),
-                "greater_than" => return Ok(Some(make_hover("GREATER_THAN: Pop a b, push (b > a)", r, doc))),
-                "less_eq" => return Ok(Some(make_hover("LESS_EQ: Pop a b, push (b <= a)", r, doc))),
-                "greater_eq" => return Ok(Some(make_hover("GREATER_EQ: Pop a b, push (b >= a)", r, doc))),
+                // IO (both rule names and string literals)
+                "RIBBIT" | "ribbit" => return Ok(Some(make_hover("RIBBIT: Print top of stack", r, doc))),
+                "CROAK" | "croak" => return Ok(Some(make_hover("CROAK: Read input", r, doc))),
+
+
+                // Arithmetic (both rule names and string literals)
+                "ADD" | "add" => return Ok(Some(make_hover("ADD: Pop a b, push (b + a)", r, doc))),
+                "SUB" | "sub" => return Ok(Some(make_hover("SUB: Pop a b, push (b - a)", r, doc))),
+                "MUL" | "mul" => return Ok(Some(make_hover("MUL: Pop a b, push (b * a)", r, doc))),
+                "DIV" | "div" => return Ok(Some(make_hover("DIV: Pop a b, push (b / a)", r, doc))),
+
+                // Comparison (both rule names and string literals)
+                "EQUALS" | "equals" => return Ok(Some(make_hover("EQUALS: Pop a b, push (b == a)", r, doc))),
+                "NOT_EQUAL" | "not_equal" => return Ok(Some(make_hover("NOT_EQUAL: Pop a b, push (b != a)", r, doc))),
+                "LESS_THAN" | "less_than" => return Ok(Some(make_hover("LESS_THAN: Pop a b, push (b < a)", r, doc))),
+                "GREATER_THAN" | "greater_than" => return Ok(Some(make_hover("GREATER_THAN: Pop a b, push (b > a)", r, doc))),
+                "LESS_EQ" | "less_eq" => return Ok(Some(make_hover("LESS_EQ: Pop a b, push (b <= a)", r, doc))),
+                "GREATER_EQ" | "greater_eq" => return Ok(Some(make_hover("GREATER_EQ: Pop a b, push (b >= a)", r, doc))),
                 "identifier" => {
-                    let text = cur.utf8_text(bytes).unwrap_or("");
-                    if let Some(_def) = find_label_definition(&doc.index, text) {
-                        return Ok(Some(make_hover(&format!("Label: {}", text), r, doc)));
-                    } else {
-                        return Ok(None);
+                    // If this identifier is part of a label_definition, hop, or leap,
+                    // don't handle it here - let the loop continue to the parent
+                    if let Some(parent) = cur.parent() {
+                        if matches!(parent.kind(), "label_definition" | "hop" | "leap") {
+                            // Continue to parent instead of returning
+                        } else {
+                            // Regular identifier - check if it's a known label
+                            let text = cur.utf8_text(bytes).unwrap_or("");
+                            if let Some(_def) = find_label_definition(&doc.index, text) {
+                                return Ok(Some(make_hover(&format!("Label: {}", text), r, doc)));
+                            }
+                        }
                     }
                 }
 

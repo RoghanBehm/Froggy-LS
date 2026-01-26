@@ -34,14 +34,6 @@ pub fn collect_diagnostics(tree: &Tree, doc: &Doc) -> Vec<Diagnostic> {
     eprintln!("Tree has_error: {}", tree.root_node().has_error());
 
     while let Some(node) = stack.pop() {
-        // DEBUG: Print every node kind
-        eprintln!(
-            "Node: kind={}, is_error={}, is_missing={}, has_error={}",
-            node.kind(),
-            node.is_error(),
-            node.is_missing(),
-            node.has_error()
-        );
 
         let is_err = node.is_error() || node.is_missing() || node.kind() == "ERROR";
         if is_err {

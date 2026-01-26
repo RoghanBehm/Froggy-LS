@@ -16,34 +16,36 @@ pub struct Tok {
 pub fn legend() -> SemanticTokensLegend {
     SemanticTokensLegend {
         token_types: vec![
-            SemanticTokenType::KEYWORD,
-            SemanticTokenType::NUMBER,
-            SemanticTokenType::COMMENT,
-            SemanticTokenType::STRING,
-            SemanticTokenType::VARIABLE,
+            SemanticTokenType::KEYWORD,      // 0 - control flow
+            SemanticTokenType::NUMBER,       // 1
+            SemanticTokenType::COMMENT,      // 2
+            SemanticTokenType::STRING,       // 3
+            SemanticTokenType::VARIABLE,     // 4 - labels
+            SemanticTokenType::FUNCTION,     // 5 - stack operations
+            SemanticTokenType::OPERATOR,     // 6 - arithmetic/comparison
+            SemanticTokenType::PARAMETER,    // 7 - I/O operations
         ],
         token_modifiers: vec![
-            SemanticTokenModifier::DECLARATION,
             SemanticTokenModifier::DEFINITION,
-            SemanticTokenModifier::READONLY,
         ],
     }
 }
 
 // token type indices
 pub mod token_types {
-    pub const KEYWORD: u32 = 0;
+    pub const KEYWORD: u32 = 0;        // control flow
     pub const NUMBER: u32 = 1;
     pub const COMMENT: u32 = 2;
     pub const STRING: u32 = 3;
-    pub const VARIABLE: u32 = 4;
+    pub const VARIABLE: u32 = 4;       // labels
+    pub const FUNCTION: u32 = 5;       // stack ops
+    pub const OPERATOR: u32 = 6;       // arithmetic/comparison
+    pub const PARAMETER: u32 = 7;      // I/O ops
 }
 
 // modifier bitset flags
 pub mod token_modifiers {
-    pub const DECLARATION: u32 = 1 << 0; // index 0
-    pub const DEFINITION: u32 = 1 << 1; // index 1
-    pub const READONLY: u32 = 1 << 2; // index 2
+    pub const DEFINITION: u32 = 1 << 0;  // index 1
 }
 
 pub fn build_semantic_tokens(doc: &Doc) -> Vec<Tok> {
@@ -52,30 +54,8 @@ pub fn build_semantic_tokens(doc: &Doc) -> Vec<Tok> {
     dfs_visit(&doc.tree, |node| {
         let kind = node.kind();
 
-        if matches!(
-            kind,
-            "plop"
-                | "hop"
-                | "leap"
-                | "gulp"
-                | "ribbit"
-                | "croak"
-                | "dup"
-                | "swap"
-                | "over"
-                | "less_than"
-                | "greater_than"
-                | "equals"
-                | "not_equal"
-                | "less_eq"
-                | "greater_eq"
-                | "add"
-                | "sub"
-                | "mul"
-                | "div"
-                | "lily"
-                | "splash"
-        ) {
+        // Control flow keywords
+        if matches!(kind, "lily" | "hop" | "leap") {
             let r = leading_word_range(&doc.text, node);
             if let Some(t) = tok_from_range(doc, &r, token_types::KEYWORD, 0) {
                 toks.push(t);
@@ -83,8 +63,41 @@ pub fn build_semantic_tokens(doc: &Doc) -> Vec<Tok> {
             return;
         }
 
+        // Stack manipulation operations
+        if matches!(kind, "plop" | "splash"| "gulp" | "burp" | "dup" | "swap" | "over") {
+            let r = leading_word_range(&doc.text, node);
+            if let Some(t) = tok_from_range(doc, &r, token_types::FUNCTION, 0) {
+                toks.push(t);
+            }
+            return;
+        }
+
+        // Arithmetic and comparison operators
+        if matches!(
+            kind,
+            "add" | "sub" | "mul" | "div" | 
+            "less_than" | "greater_than" | "equals" | 
+            "not_equal" | "less_eq" | "greater_eq"
+        ) {
+            let r = leading_word_range(&doc.text, node);
+            if let Some(t) = tok_from_range(doc, &r, token_types::OPERATOR, 0) {
+                toks.push(t);
+            }
+            return;
+        }
+
+        // I/O operations
+        if matches!(kind, "ribbit" | "croak") {
+            let r = leading_word_range(&doc.text, node);
+            if let Some(t) = tok_from_range(doc, &r, token_types::PARAMETER, 0) {
+                toks.push(t);
+            }
+            return;
+        }
+
         match kind {
             "label_definition" => {
+                // "LILY" keyword
                 if let Some(name_node) = node.child_by_field_name("name").or_else(|| node.child(0))
                 {
                     let range = ByteRange {
@@ -96,13 +109,19 @@ pub fn build_semantic_tokens(doc: &Doc) -> Vec<Tok> {
                     }
                 }
 
+                // The label name itself
                 if let Some(name_node) = node.child_by_field_name("name").or_else(|| node.child(1))
                 {
                     let range = ByteRange {
                         start: name_node.start_byte(),
                         end: name_node.end_byte(),
                     };
-                    if let Some(t) = tok_from_range(doc, &range, token_types::VARIABLE, 0) {
+                    if let Some(t) = tok_from_range(
+                        doc,
+                        &range,
+                        token_types::VARIABLE,
+                        token_modifiers::DEFINITION,
+                    ) {
                         toks.push(t);
                     }
                 }
@@ -116,30 +135,17 @@ pub fn build_semantic_tokens(doc: &Doc) -> Vec<Tok> {
                         start: name_node.start_byte(),
                         end: name_node.end_byte(),
                     };
-                    if let Some(t) = tok_from_range(doc, &range, token_types::KEYWORD, 0) {
+                    if let Some(t) = tok_from_range(doc, &range, token_types::FUNCTION, 0) {
                         toks.push(t);
                     }
                 }
                 return;
             }
 
-            "label_reference" => {
-                if let Some(name_node) = node.child_by_field_name("name").or_else(|| node.child(0))
-                {
-                    let range = ByteRange {
-                        start: name_node.start_byte(),
-                        end: name_node.end_byte(),
-                    };
-                    if let Some(t) = tok_from_range(doc, &range, token_types::VARIABLE, 0) {
-                        toks.push(t);
-                    }
-                }
-                return;
-            }
 
             "identifier" => {
                 if let Some(parent) = node.parent() {
-                    if parent.kind() == "label_definition" || parent.kind() == "label_reference" {
+                    if matches!(parent.kind(), "label_definition" | "hop" | "leap") {
                         return;
                     }
                 }

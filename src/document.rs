@@ -46,7 +46,7 @@ impl Doc {
         self.line_index
             .to_utf8(line_index::WideEncoding::Utf16, wide_line_col)
             .and_then(|line_col| self.line_index.offset(line_col))
-            .map(|text_size| text_size.into()) // Convert TextSize to usize
+            .map(|text_size| text_size.into())
     }
 
     // Convert byte offset to LSP position (UTF-16)
@@ -84,7 +84,7 @@ impl Index {
 
         dfs_visit(tree, |node| match node.kind() {
             "label_definition" => {
-                let id = node.child_by_field_name("name").or_else(|| node.child(1));
+                let id = node.child_by_field_name("name");
                 if let Some(id) = id {
                     if let Ok(name) = id.utf8_text(bytes) {
                         idx.label_defs.insert(
@@ -97,8 +97,8 @@ impl Index {
                     }
                 }
             }
-            "label_reference" => {
-                let id = node.child_by_field_name("name").or_else(|| node.child(0));
+            "hop" | "leap" => {
+                let id = node.child_by_field_name("target");
                 if let Some(id) = id {
                     if let Ok(name) = id.utf8_text(bytes) {
                         idx.label_refs
