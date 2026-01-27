@@ -7,6 +7,10 @@ pub fn find_label_definition<'a>(index: &'a Index, label_name: &str) -> Option<&
     index.label_defs.get(label_name)
 }
 
+pub fn find_label_references<'a>(index: &'a Index, label_name: &str) -> Option<&'a Vec<ByteRange>> {
+    index.label_refs.get(label_name)
+}
+
 pub fn make_hover(msg: &str, range: ByteRange, doc: &Doc) -> Hover {
     Hover {
         contents: HoverContents::Scalar(MarkedString::String(msg.to_string())),
