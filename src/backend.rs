@@ -39,6 +39,7 @@ impl LanguageServer for Backend {
                 completion_provider: Some(CompletionOptions::default()),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
+                document_symbol_provider: Some(OneOf::Left(true)),
                 semantic_tokens_provider: Some(
                     SemanticTokensServerCapabilities::SemanticTokensOptions(
                         SemanticTokensOptions {
@@ -368,7 +369,7 @@ impl LanguageServer for Backend {
             let label_name = node.utf8_text(doc.text.as_bytes()).unwrap_or("__unknown__");
             let mut locations: Vec<Location> = Vec::new();
 
-            // Add def is exists
+            // Add def if exists
             if params.context.include_declaration {
                 if let Some(def) = find_label_definition(&doc.index, label_name) {
                     locations.push(Location::new(uri.clone(), labeldef_to_range(def, doc)));
@@ -389,4 +390,33 @@ impl LanguageServer for Backend {
 
         Ok(None)
     }
+
+    async fn document_symbol(
+    &self,
+    params: DocumentSymbolParams,
+) -> Result<Option<DocumentSymbolResponse>> {
+    let uri = &params.text_document.uri;
+    let docs = self.docs.read().await;
+    let doc = match docs.get(uri) {
+        Some(d) => d,
+        None => return Ok(None),
+    };
+
+#[allow(deprecated)]
+let symbols: Vec<DocumentSymbol> = doc.index.label_defs
+    .iter()
+    .map(|(name, range)| DocumentSymbol {
+        name: name.clone(),
+        detail: Some("Label".to_string()),
+        kind: SymbolKind::FUNCTION,
+        range: labeldef_to_range(range, doc),
+        selection_range: labeldef_to_range(range, doc),
+        children: None,
+        tags: None,
+        deprecated: None,
+    })
+    .collect();
+
+    Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+}
 }
